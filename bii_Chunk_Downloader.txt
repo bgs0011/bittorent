@@ -1,0 +1,202 @@
+import time
+from socket import *
+import json
+
+file = open("log.txt", "w")
+content_dictionary = {}
+
+# serverHost = 'localhost'
+serverPort = 8000
+
+file_name = ""
+
+
+def erase_ip(_broadcast_ip):
+    f = open("content_dictionary.json", "r")
+    temp_dict = json.load(f)
+    f.close()
+
+    what_chunk_to_pop = []
+
+    for key in temp_dict.items():
+        list_ip = []
+        str = ""
+
+        if len(key[1]) > 5:
+
+            for x in range(0, len(key[1])):
+                str = str + key[1][x]
+
+            if str == _broadcast_ip:
+                what_chunk_to_pop.append(key[0])
+            else:
+                list_ip.append(str)
+
+        else:
+            for value in range(0, len(key[1])):
+
+                if key[1][value] == _broadcast_ip:
+                    pass
+                else:
+                    list_ip.append(key[1][value])
+
+        temp_dict[key[0]] = list_ip
+
+    for elements in what_chunk_to_pop:
+        temp_dict.pop(elements)
+
+    with open('content_dictionary.json', 'w') as file:
+        file.write(json.dumps(temp_dict))
+    file.close()
+
+
+def handle_content_dictionary(_broadcast_ip, _files):
+    global content_dictionary
+    f = open("content_dictionary.json", "r")
+    temp_dict = json.load(f)
+    f.close()
+
+    str = ""
+    list = []
+
+    key = _files
+    if key in temp_dict:
+
+        for item in temp_dict[key]:
+            if item == ",":
+                if str == _broadcast_ip:
+                    str = ""
+                else:
+                    list.append(str)
+                    str = ""
+
+            str = str + item
+
+        if str == _broadcast_ip:
+            pass
+        else:
+            if not str == "":
+                list.append(str)
+
+        list.append(_broadcast_ip)
+
+        temp_dict[key] = list
+
+    else:
+        temp_dict[key] = _broadcast_ip
+
+    f = open("content_dictionary.json", "w")
+    json.dump(temp_dict, f)
+    f.close()
+
+
+def combine_chunks(content_name):
+    content_name = content_name
+
+    chunk_names = [content_name + '_1', content_name + '_2', content_name + '_3', content_name + '_4',
+                   content_name + '_5']
+
+    with open(content_name + '.png', 'wb') as outfile:
+        for chunk in chunk_names:
+            with open(chunk, 'rb') as infile:
+                outfile.write(infile.read())
+            infile.close()
+
+
+def chunk_download(content_name, chunk_name, serverHost):
+    start_time = time.time()
+
+    clientSocket = socket(AF_INET, SOCK_STREAM)
+    clientSocket.connect((serverHost, serverPort))
+
+    requested = {"requested_content": chunk_name}
+    requested = json.dumps(requested)
+
+    clientSocket.send(requested.encode("utf-8"))
+
+    recv_data = clientSocket.recv(1024)
+    part = recv_data
+
+    while True:
+        recv_data = clientSocket.recv(1024)
+        part = part + recv_data
+
+        #if len(part) == length:
+         #   break
+
+        if not recv_data:
+            break
+
+    with open(content_name, 'wb') as f:
+        f.write(part)
+
+    end_time = time.time()
+    timestamp = end_time - start_time
+
+    f = open('log.txt', 'a+')
+    f.write("timestamp: ")
+    f.write(str(timestamp))
+    f.write("  chunk_name: ")
+    f.write(str(chunk_name))
+    f.write("  uploaded from:  ")
+    f.write(str(serverHost))
+
+    f.write("\n")
+    f.close()
+
+    clientSocket.sendto(chunk_name.encode("UTF-8"), ('25.255.255.255', 5001))
+
+    clientSocket.send(chunk_name.encode("utf-8"))
+    ip = clientSocket.recv(1024)
+    handle_content_dictionary(ip.decode("utf-8"), chunk_name)
+
+    clientSocket.close()
+
+
+def do_you_want_to_download():
+    global file_name
+    global is_successful
+
+    file_name = input("Please enter the name of the file you want to download:")
+    file_name = file_name.replace(".png", "")
+
+    with open('content_dictionary.json', 'r') as file:
+        content = json.load(file)
+
+    for i in range(1, 6):
+        chunk_name = file_name + "_" + str(i)
+        content_name = chunk_name
+        if len(content[chunk_name][0]) == 1:
+            ip_of_chunk = content[chunk_name]
+            try:
+                chunk_download(content_name, chunk_name, ip_of_chunk)
+
+            except TimeoutError:
+                erase_ip(ip_of_chunk)
+                is_successful = False
+                print("CHUNK " + chunk_name + " CANNOT BEDOWNLOADED FROM ONLINE PEERS")
+
+        elif len(content[chunk_name][0]) > 1:
+            for i in range(0, len(content[chunk_name])):
+                try:
+                    ip_of_chunk = content[chunk_name][i]
+                    chunk_download(content_name, chunk_name, ip_of_chunk)
+
+                except TimeoutError:
+                    if len(content[chunk_name][0]) == 1:
+                        is_successful = False
+
+                    erase_ip(ip_of_chunk)
+                    print("CHUNK " + chunk_name + " CANNOT BEDOWNLOADED FROM " + ip_of_chunk)
+
+        else:
+            print("CHUNK " + chunk_name + " CANNOT BE DOWNLOADED FROM ONLINE PEERS.")
+            print("CHUNK CANNOT BE FOUND Ä°N content_dictionary")
+
+
+while True:
+    is_successful = True
+    do_you_want_to_download()
+    combine_chunks(file_name)
+    if is_successful:
+        print("Download completed successfully.")

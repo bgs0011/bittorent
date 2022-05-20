@@ -1,0 +1,104 @@
+import time
+import json
+from socket import *
+
+content_dictionary = {}
+
+
+serverHost = ""
+serverPort = 8000
+
+serverSocket = socket(AF_INET, SOCK_STREAM)
+serverSocket.bind((serverHost, serverPort))
+
+print("Listening ...")
+
+
+def handle_content_dictionary(_broadcast_ip, _files):
+    global content_dictionary
+    f = open("content_dictionary.json", "r")
+    temp_dict = json.load(f)
+    f.close()
+
+    str = ""
+    list = []
+    is_ip_in_key = True
+
+    key = _files
+    if key in temp_dict:
+
+        for item in temp_dict[key]:
+            if item == ",":
+                if str == _broadcast_ip:
+                    str = ""
+                else:
+                    list.append(str)
+                    str = ""
+
+            str = str + item
+
+        if str == _broadcast_ip:
+            pass
+        else:
+            if not str == "":
+                list.append(str)
+
+        list.append(_broadcast_ip)
+
+        temp_dict[key] = list
+
+    else:
+        temp_dict[key] = _broadcast_ip
+
+    f = open("content_dictionary.json", "w")
+    json.dump(temp_dict, f)
+    f.close()
+
+
+def start():
+
+    serverSocket.listen(2)
+    client_socket, client_addr = serverSocket.accept()
+
+    print("new client links:% s" % str(client_addr))
+
+    recv_data = client_socket.recv(1024)
+    requested = recv_data.decode("utf-8")
+    req = json.loads(requested)
+    file_name = req["requested_content"]
+
+    start_time = time.time()
+
+    print("client requests to download a file is : % s" % file_name)
+    with open(file_name, "rb") as f:
+        file_content = f.read()
+
+    client_socket.sendall(file_content)
+
+    # is_sent = client_socket.recv(1024)
+    # is_sent = is_sent.decode("utf-8")
+    # if is_sent == file_name:
+    if not file_content:
+        client_socket.sendall((client_addr[0]).encode("utf-8"))
+
+        handle_content_dictionary(client_addr[0], file_name)
+
+        end_time = time.time()
+
+        timestamp = end_time - start_time
+
+        f = open('log.txt', 'a+')
+        f.write("timestamp: ")
+        f.write(str(timestamp))
+        f.write("  chunk_name: ")
+        f.write(file_name)
+        f.write("  downloaded by:  ")
+        f.write(str(client_addr[0]))
+
+        f.write("\n")
+        f.close()
+        serverSocket.close()
+
+
+while True:
+    start()

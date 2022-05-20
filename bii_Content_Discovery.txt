@@ -1,0 +1,81 @@
+import json
+from socket import *
+
+content_dictionary = {}
+
+file = open("content_dictionary.json", "w")
+
+clientSocket = socket(AF_INET, SOCK_DGRAM)
+clientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+clientSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+
+clientSocket.bind(('', 5001))
+
+
+def broadcast_file_receive():
+    while True:
+        files, addr = clientSocket.recvfrom(1024)
+        files = files.decode("utf-8")
+        print(files)
+
+        broadcast_ip = addr[0]
+
+        handle_content_dictionary(broadcast_ip, files)
+
+
+def handle_content_dictionary(_broadcast_ip, _files):
+    global content_dictionary
+
+    temp_dict = json.loads(_files)
+    _broadcast_ip = "" + _broadcast_ip + ""
+
+    for i in range(0, 5):
+
+        str = ""
+        list = []
+        is_ip_in_key = True
+
+        key = temp_dict['chunks'][i]
+        if key in content_dictionary:
+
+            for item in content_dictionary[key]:
+                if item == ",":
+                    if str == _broadcast_ip:
+                        is_ip_in_key = False
+                        str = ""
+                    else:
+                        list.append(str)
+                        str = ""
+
+                    if str == _broadcast_ip:
+                        is_ip_in_key = False
+                        str = ""
+
+                str = str + item
+
+            if str == _broadcast_ip:
+                is_ip_in_key = False
+
+            if not str == "":
+                list.append(str)
+
+            if is_ip_in_key:
+                list.append(_broadcast_ip)
+
+            content_dictionary[key] = list
+
+        else:
+            content_dictionary[key] = _broadcast_ip
+
+    with open('content_dictionary.json', 'w') as file:
+        file.write(json.dumps(content_dictionary))
+
+    print(content_dictionary)
+
+
+def start_client():
+    while True:
+        broadcast_file_receive()
+
+
+start_client()
